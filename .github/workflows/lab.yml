@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"dispatch","extra":"","install":"","tools":"","apt":"","avd_home":""}]' || '[{"name":"avd-home-env","extra":"","install":"","tools":"","apt":"","avd_home":"env"},{"name":"avd-home-env-libpulse0","extra":"","install":"","tools":"","apt":"libpulse0","avd_home":"env"},{"name":"mkdir-android-libpulse0","extra":"","install":"","tools":"","apt":"libpulse0","avd_home":"mkdir"}]') }}
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"dispatch","extra":"","install":"","tools":"","apt":"","avd_home":""}]' || '[{"name":"fix-exact-1","extra":"","install":"","tools":"","apt":"","avd_home":"late"},{"name":"fix-exact-2","extra":"","install":"","tools":"","apt":"","avd_home":"late"}]') }}
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4

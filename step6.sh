@@ -36,6 +36,12 @@ IMAGE=${IMAGE:-"system-images;android-37.0;google_apis;$ABI"}
 sdk_install "$IMAGE" || { say "could not install $IMAGE"; exit 1; }
 say "image: $IMAGE"
 say "image source.properties:"; cat "$SDK/$(printf '%s' "$IMAGE" | tr ';' '/')/source.properties" 2>&1
+if [ "${AVD_HOME_MODE:-}" = late ]; then
+  # exactly as the fix in run.sh: after the installs, just before avdmanager
+  ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}; export ANDROID_AVD_HOME
+  mkdir -p "$ANDROID_AVD_HOME" || exit 1
+  say "late: ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
+fi
 echo no | "$BIN/avdmanager" create avd --force -n aict -k "$IMAGE" > "$REPORT/avdmanager.log" 2>&1; st=$?
 say "avdmanager create avd exited $st; its output:"; tr '\r' '\n' < "$REPORT/avdmanager.log" | grep -v '^\s*$' | tail -20
 [ "$st" = 0 ] || exit 1
@@ -65,5 +71,21 @@ done
 [ "$booted" = 1 ] || { say "the emulator did not boot within $BOOT_LIMIT_S seconds"; exit 1; }
 say "booted after $(( BOOT_LIMIT_S - (end - $(date +%s)) )) seconds"
 "$ADB" -s "$SERIAL" shell getprop ro.build.version.sdk
+wait_device() { # as run.sh: until adb sees the device, or the time runs out
+  end=$(( $(date +%s) + $1 ))
+  while [ "$(date +%s)" -lt "$end" ]; do
+    [ "$("$ADB" -s "$SERIAL" get-state 2>/dev/null)" = device ] && return 0
+    sleep 2
+  done
+  return 1
+}
+"$ADB" -s "$SERIAL" root >/dev/null 2>&1 || { say "adb root failed"; exit 1; }
+sleep 2; wait_device 60 || { say "the device did not come back after adb root"; exit 1; }
+say "adb root: $("$ADB" -s "$SERIAL" shell id -u 2>&1)"
+for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
+  "$ADB" -s "$SERIAL" shell settings put global "$scale" 0 || { say "settings put $scale failed"; exit 1; }
+done
+say "scales: $("$ADB" -s "$SERIAL" shell settings get global window_animation_scale) $("$ADB" -s "$SERIAL" shell settings get global transition_animation_scale) $("$ADB" -s "$SERIAL" shell settings get global animator_duration_scale)"
+say "step 6 complete"
 "$ADB" -s "$SERIAL" emu kill >/dev/null 2>&1
 exit 0

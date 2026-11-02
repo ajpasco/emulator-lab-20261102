@@ -10,8 +10,13 @@ say() { printf '[lab] %s\n' "$*"; }
 SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
 [ -n "$SDK" ] && [ -d "$SDK" ] || { say "neither ANDROID_HOME nor ANDROID_SDK_ROOT names the Android SDK"; exit 1; }
 BIN=$SDK/cmdline-tools/latest/bin
+case "${AVD_HOME_MODE:-}" in
+  env) ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}; export ANDROID_AVD_HOME
+       mkdir -p "$ANDROID_AVD_HOME" || exit 1; say "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" ;;
+  mkdir) mkdir -p "$HOME/.android" || exit 1; say "made $HOME/.android first" ;;
+esac
 say "command-line tools on the image: $(grep Pkg.Revision "$SDK/cmdline-tools/latest/source.properties" 2>&1)"
-say "environment:"; env | grep -E '^(HOME|XDG_[A-Z_]*|ANDROID_[A-Z_]*)=' | sort
+say "environment: $(env | grep -E '^(HOME|XDG_[A-Z_]*|ANDROID_[A-Z_]*)=' | sort | tr '\n' ' ')"
 if [ -n "${CLT_VERSION:-}" ]; then
   yes 2>/dev/null | "$BIN/sdkmanager" --install "cmdline-tools;$CLT_VERSION" >/dev/null || { say "could not install cmdline-tools;$CLT_VERSION"; exit 1; }
   BIN=$SDK/cmdline-tools/$CLT_VERSION/bin
@@ -37,7 +42,7 @@ say "avdmanager create avd exited $st; its output:"; tr '\r' '\n' < "$REPORT/avd
 say "where aict.ini is:"; find / -xdev -name aict.ini 2>/dev/null | head
 say "avdmanager list avd:"; "$BIN/avdmanager" list avd 2>&1 | tail -8
 say "emulator -list-avds:"; "$EMULATOR" -list-avds 2>&1 | tail -5
-say "config.ini:"; cat "$HOME/.android/avd/aict.avd/config.ini" 2>&1 | head -40
+say "config.ini:"; cat "${ANDROID_AVD_HOME:-$HOME/.android/avd}/aict.avd/config.ini" 2>&1 | head -40
 port=5580
 while "$ADB_TOOL" devices | grep -q "^emulator-$port[[:space:]]"; do
   port=$((port + 2)); [ "$port" -le 5680 ] || { say "no free emulator port"; exit 1; }

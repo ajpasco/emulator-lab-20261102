@@ -21,6 +21,9 @@ on:
       apt:
         description: apt packages to install first, space-separated
         default: ""
+      avd_home:
+        description: "env: set ANDROID_AVD_HOME to ~/.android/avd; mkdir: make ~/.android first; empty: neither"
+        default: ""
 permissions:
   contents: read
 jobs:
@@ -29,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"dispatch","extra":"","install":"","tools":"","apt":""}]' || '[{"name":"exact","extra":"","install":"","tools":"","apt":""},{"name":"tools-23","extra":"","install":"","tools":"23.0","apt":""},{"name":"tools-23-libpulse0","extra":"","install":"","tools":"23.0","apt":"libpulse0"}]') }}
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"dispatch","extra":"","install":"","tools":"","apt":"","avd_home":""}]' || '[{"name":"avd-home-env","extra":"","install":"","tools":"","apt":"","avd_home":"env"},{"name":"avd-home-env-libpulse0","extra":"","install":"","tools":"","apt":"libpulse0","avd_home":"env"},{"name":"mkdir-android-libpulse0","extra":"","install":"","tools":"","apt":"libpulse0","avd_home":"mkdir"}]') }}
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +67,7 @@ jobs:
           INSTALL_EMULATOR: ${{ github.event_name == 'workflow_dispatch' && inputs.install || matrix.install }}
           IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || '' }}
           CLT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tools || matrix.tools }}
+          AVD_HOME_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.avd_home || matrix.avd_home }}
         run: sh step6.sh
       - name: the emulator's log
         if: always()

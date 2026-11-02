@@ -1,0 +1,70 @@
+name: emulator-lab
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      extra:
+        description: extra emulator flags
+        default: ""
+      install:
+        description: "1 to install the newest emulator first"
+        default: ""
+      image:
+        description: system image, empty for the API 37 Google APIs x86_64 image
+        default: ""
+      fill_gb:
+        description: GB of disk to fill before the start, to mimic the builds before step 6
+        default: "0"
+permissions:
+  contents: read
+jobs:
+  trial:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"dispatch","extra":"","install":""}]' || '[{"name":"exact","extra":"","install":""},{"name":"gpu-swiftshader","extra":"-gpu swiftshader_indirect","install":""},{"name":"newest-emulator","extra":"","install":"1"}]') }}
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: kvm for the android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: the machine
+        run: |
+          uname -a; cat /etc/os-release | head -3; nproc; free -m; df -h / /mnt 2>/dev/null; ls -l /dev/kvm
+          ls "$ANDROID_HOME"; ls "$ANDROID_HOME/emulator" 2>&1 | head -5
+      - name: fill the disk
+        if: github.event_name == 'workflow_dispatch' && inputs.fill_gb != '0'
+        env:
+          FILL_GB: ${{ inputs.fill_gb }}
+        run: fallocate -l "${FILL_GB}G" "$HOME/fill.bin" && df -h /
+      - name: step 6
+        env:
+          EXTRA_EMU_ARGS: ${{ github.event_name == 'workflow_dispatch' && inputs.extra || matrix.extra }}
+          INSTALL_EMULATOR: ${{ github.event_name == 'workflow_dispatch' && inputs.install || matrix.install }}
+          IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || '' }}
+        run: sh step6.sh
+      - name: the emulator's log
+        if: always()
+        run: |
+          echo "--- report/emulator.log"; cat report/emulator.log 2>&1 | tail -150
+          echo "--- accel-check"; "$ANDROID_HOME/emulator/emulator" -accel-check 2>&1 | tail -10
+          echo "--- missing libraries"
+          for f in "$ANDROID_HOME"/emulator/emulator "$ANDROID_HOME"/emulator/qemu/linux-x86_64/qemu-system-x86_64; do
+            [ -f "$f" ] && { echo "$f"; LD_LIBRARY_PATH="$ANDROID_HOME/emulator/lib64:$ANDROID_HOME/emulator/lib64/qt/lib" ldd "$f" | grep 'not found' || echo "  none"; }
+          done
+          df -h /; free -m
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-${{ matrix.name }}
+          path: report/

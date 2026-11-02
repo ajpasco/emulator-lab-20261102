@@ -10,6 +10,13 @@ say() { printf '[lab] %s\n' "$*"; }
 SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
 [ -n "$SDK" ] && [ -d "$SDK" ] || { say "neither ANDROID_HOME nor ANDROID_SDK_ROOT names the Android SDK"; exit 1; }
 BIN=$SDK/cmdline-tools/latest/bin
+say "command-line tools on the image: $(grep Pkg.Revision "$SDK/cmdline-tools/latest/source.properties" 2>&1)"
+say "environment:"; env | grep -E '^(HOME|XDG_[A-Z_]*|ANDROID_[A-Z_]*)=' | sort
+if [ -n "${CLT_VERSION:-}" ]; then
+  yes 2>/dev/null | "$BIN/sdkmanager" --install "cmdline-tools;$CLT_VERSION" >/dev/null || { say "could not install cmdline-tools;$CLT_VERSION"; exit 1; }
+  BIN=$SDK/cmdline-tools/$CLT_VERSION/bin
+  say "using command-line tools $(grep Pkg.Revision "$SDK/cmdline-tools/$CLT_VERSION/source.properties" 2>&1) from $BIN"
+fi
 ADB_TOOL=$SDK/platform-tools/adb
 EMULATOR=$SDK/emulator/emulator
 case "$(uname -m)" in arm64|aarch64) ABI=arm64-v8a ;; *) ABI=x86_64 ;; esac
@@ -24,8 +31,13 @@ IMAGE=${IMAGE:-"system-images;android-37.0;google_apis;$ABI"}
 sdk_install "$IMAGE" || { say "could not install $IMAGE"; exit 1; }
 say "image: $IMAGE"
 say "image source.properties:"; cat "$SDK/$(printf '%s' "$IMAGE" | tr ';' '/')/source.properties" 2>&1
-echo no | "$BIN/avdmanager" create avd --force -n aict -k "$IMAGE" >/dev/null || exit 1
-say "config.ini:"; cat "$HOME/.android/avd/aict.avd/config.ini" 2>&1
+echo no | "$BIN/avdmanager" create avd --force -n aict -k "$IMAGE" > "$REPORT/avdmanager.log" 2>&1; st=$?
+say "avdmanager create avd exited $st; its output:"; tr '\r' '\n' < "$REPORT/avdmanager.log" | grep -v '^\s*$' | tail -20
+[ "$st" = 0 ] || exit 1
+say "where aict.ini is:"; find / -xdev -name aict.ini 2>/dev/null | head
+say "avdmanager list avd:"; "$BIN/avdmanager" list avd 2>&1 | tail -8
+say "emulator -list-avds:"; "$EMULATOR" -list-avds 2>&1 | tail -5
+say "config.ini:"; cat "$HOME/.android/avd/aict.avd/config.ini" 2>&1 | head -40
 port=5580
 while "$ADB_TOOL" devices | grep -q "^emulator-$port[[:space:]]"; do
   port=$((port + 2)); [ "$port" -le 5680 ] || { say "no free emulator port"; exit 1; }

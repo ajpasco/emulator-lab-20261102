@@ -15,6 +15,12 @@ on:
       fill_gb:
         description: GB of disk to fill before the start, to mimic the builds before step 6
         default: "0"
+      tools:
+        description: command-line tools version to install and use, as 23.0; empty for the image's
+        default: ""
+      apt:
+        description: apt packages to install first, space-separated
+        default: ""
 permissions:
   contents: read
 jobs:
@@ -23,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"dispatch","extra":"","install":""}]' || '[{"name":"exact","extra":"","install":""},{"name":"gpu-swiftshader","extra":"-gpu swiftshader_indirect","install":""},{"name":"newest-emulator","extra":"","install":"1"}]') }}
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"dispatch","extra":"","install":"","tools":"","apt":""}]' || '[{"name":"exact","extra":"","install":"","tools":"","apt":""},{"name":"tools-23","extra":"","install":"","tools":"23.0","apt":""},{"name":"tools-23-libpulse0","extra":"","install":"","tools":"23.0","apt":"libpulse0"}]') }}
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +48,11 @@ jobs:
         run: |
           uname -a; cat /etc/os-release | head -3; nproc; free -m; df -h / /mnt 2>/dev/null; ls -l /dev/kvm
           ls "$ANDROID_HOME"; ls "$ANDROID_HOME/emulator" 2>&1 | head -5
+      - name: apt packages
+        env:
+          APT: ${{ github.event_name == 'workflow_dispatch' && inputs.apt || matrix.apt }}
+        if: (github.event_name == 'workflow_dispatch' && inputs.apt != '') || matrix.apt != ''
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq $APT && dpkg -l $APT | tail -n +6
       - name: fill the disk
         if: github.event_name == 'workflow_dispatch' && inputs.fill_gb != '0'
         env:
@@ -52,6 +63,7 @@ jobs:
           EXTRA_EMU_ARGS: ${{ github.event_name == 'workflow_dispatch' && inputs.extra || matrix.extra }}
           INSTALL_EMULATOR: ${{ github.event_name == 'workflow_dispatch' && inputs.install || matrix.install }}
           IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || '' }}
+          CLT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tools || matrix.tools }}
         run: sh step6.sh
       - name: the emulator's log
         if: always()
